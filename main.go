@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/PuerkitoBio/goquery"
 	"io/ioutil"
 	"log"
@@ -43,6 +44,13 @@ func inspectHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if err = m.validate(); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
+			log.Printf("[%s] %s request finished. Code: %d. Reason: %s\n", r.Method, r.URL.Path, http.StatusBadRequest, err.Error())
+			return
+		}
+
 		outCh := make(chan *Result)
 		for _, url := range m.Urls {
 
@@ -57,7 +65,7 @@ func inspectHandler(w http.ResponseWriter, r *http.Request) {
 					out <- SuccessResult(url, extractMeta(doc))
 					log.Printf("Meta extracted for %s", *url)
 				}
-			}(url, outCh)
+			}(&url, outCh)
 		}
 
 		metas := make(map[string]*PageMeta)
@@ -134,7 +142,7 @@ type OGMeta struct {
 }
 
 type InputModel struct {
-	Urls []*string `json:"urls"`
+	Urls []string `json:"urls"`
 }
 
 type Result struct {
@@ -155,4 +163,16 @@ func SuccessResult(url *string, meta *PageMeta) *Result {
 		Url:    url,
 		Result: meta,
 	}
+}
+
+func (m *InputModel) validate() error {
+	if m == nil {
+		return errors.New("model can't be empty")
+	}
+
+	if len(m.Urls) < 1 {
+		return errors.New("at least one urls should be specified")
+	}
+
+	return nil
 }
