@@ -8,7 +8,11 @@ import (
 	"net/http"
 )
 
+var resultCache map[string]*PageMeta
+
 func main() {
+	resultCache = make(map[string]*PageMeta)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", inspectHandler)
 
@@ -39,14 +43,30 @@ func inspectHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		metas := make(map[string]*PageMeta)
+		outCh := make(chan *Result)
 		for _, url := range m.Urls {
-			if meta, err := getPageMeta(url); err != nil {
-				metas[*url] = nil
-				log.Printf("Failed extract meta for %s. Reason: %s\n", *url, err.Error())
+
+			go func(url *string, out chan<- *Result) {
+				if meta, ok := resultCache[*url]; ok {
+					outCh <- SuccessResult(url, meta)
+					log.Printf("Meta extracted from cache for %s", *url)
+				} else if doc, err := getPage(url); err != nil {
+					out <- ErrorResult(url, err)
+					log.Printf("Meta failed to extract %s. Reason: %s\n", *url, err.Error())
+				} else {
+					out <- SuccessResult(url, extractMeta(doc))
+					log.Printf("Meta extracted for %s", *url)
+				}
+			}(url, outCh)
+		}
+
+		metas := make(map[string]*PageMeta)
+		for range m.Urls {
+			r := <-outCh
+			if r.Error != nil {
 			} else {
-				metas[*url] = meta
-				log.Printf("Success extract meta for %s", *url)
+				resultCache[*r.Url] = r.Result
+				metas[*r.Url] = r.Result
 			}
 		}
 
@@ -60,7 +80,7 @@ func inspectHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusMethodNotAllowed)
 }
 
-func getPageMeta(url *string) (*PageMeta, error) {
+func getPage(url *string) (*goquery.Document, error) {
 	response, err := http.Get(*url)
 	if err != nil {
 		return nil, err
@@ -76,7 +96,7 @@ func getPageMeta(url *string) (*PageMeta, error) {
 		log.Fatal(err)
 	}
 
-	return extractMeta(doc), nil
+	return doc, nil
 }
 
 func extractMeta(doc *goquery.Document) *PageMeta {
@@ -115,4 +135,24 @@ type OGMeta struct {
 
 type InputModel struct {
 	Urls []*string `json:"urls"`
+}
+
+type Result struct {
+	Error  error
+	Url    *string
+	Result *PageMeta
+}
+
+func ErrorResult(url *string, err error) *Result {
+	return &Result{
+		Url:   url,
+		Error: err,
+	}
+}
+
+func SuccessResult(url *string, meta *PageMeta) *Result {
+	return &Result{
+		Url:    url,
+		Result: meta,
+	}
 }
