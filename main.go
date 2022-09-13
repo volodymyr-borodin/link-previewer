@@ -12,7 +12,7 @@ import (
 var metaCache *Cache
 
 func main() {
-	metaCache = NewCache()
+	metaCache = NewCache(DefaultOptions())
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", inspectHandler)
