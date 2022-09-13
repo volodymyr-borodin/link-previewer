@@ -9,15 +9,15 @@ import (
 	"net/http"
 )
 
-var resultCache map[string]*PageMeta
+var metaCache *Cache
 
 func main() {
-	resultCache = make(map[string]*PageMeta)
+	metaCache = NewCache()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", inspectHandler)
 
-	http.ListenAndServe(":3001", mux)
+	log.Fatal(http.ListenAndServe(":3001", mux))
 }
 
 func inspectHandler(w http.ResponseWriter, r *http.Request) {
@@ -53,16 +53,17 @@ func inspectHandler(w http.ResponseWriter, r *http.Request) {
 
 		outCh := make(chan *Result)
 		for _, url := range m.Urls {
-
 			go func(url *string, out chan<- *Result) {
-				if meta, ok := resultCache[*url]; ok {
+				if meta, ok := metaCache.get(url); ok {
 					outCh <- SuccessResult(url, meta)
 					log.Printf("Meta extracted from cache for %s", *url)
 				} else if doc, err := getPage(url); err != nil {
 					out <- ErrorResult(url, err)
 					log.Printf("Meta failed to extract %s. Reason: %s\n", *url, err.Error())
 				} else {
-					out <- SuccessResult(url, extractMeta(doc))
+					meta := extractMeta(doc)
+					metaCache.set(url, meta)
+					out <- SuccessResult(url, meta)
 					log.Printf("Meta extracted for %s", *url)
 				}
 			}(&url, outCh)
@@ -73,7 +74,6 @@ func inspectHandler(w http.ResponseWriter, r *http.Request) {
 			r := <-outCh
 			if r.Error != nil {
 			} else {
-				resultCache[*r.Url] = r.Result
 				metas[*r.Url] = r.Result
 			}
 		}
