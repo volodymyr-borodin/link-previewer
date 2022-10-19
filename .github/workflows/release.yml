@@ -30,4 +30,4 @@ jobs:
           echo "${{ github.token }}" | docker login https://ghcr.io -u ${{ github.actor }} --password-stdin
           docker buildx build --push \
             --platform linux/amd64,linux/arm64 \
-            --tag ghcr.io/${{ github.repository_owner }}/link_inspector:latest .
+            --tag ghcr.io/${{ github.repository_owner }}/link-previewer:latest .

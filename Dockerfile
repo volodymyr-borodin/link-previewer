@@ -7,8 +7,8 @@ COPY go.sum ./
 RUN go mod download
 
 COPY *.go ./
-RUN go build -o /link-inspector
+RUN go build -o /link-previewer
 
 EXPOSE 3001
 
-CMD ["/link-inspector"]
+CMD ["/link-previewer"]
